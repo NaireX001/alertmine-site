@@ -1,0 +1,38 @@
+name: Publish APK to website
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'Direct .apk link from Expo'
+        required: true
+      version:
+        description: 'Version, e.g. 1.0.0'
+        required: true
+permissions:
+  contents: write
+  pages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download APK from Expo
+        run: |
+          curl -fL --retry 3 -o alertmine.apk "${{ inputs.apk_url }}"
+          SIZE=$(stat -c%s alertmine.apk)
+          echo "APK size: $SIZE bytes"
+          if [ "$SIZE" -gt 99000000 ]; then echo "APK is over GitHub's 100 MB limit"; exit 1; fi
+      - name: Put it on the website (keeps the repository small)
+        run: |
+          git config user.name "Alert Mine Release"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout --orphan release-tmp
+          git add -A
+          git commit -m "Alert Mine ${{ inputs.version }}"
+          git branch -D main
+          git branch -m main
+          git push -f origin main
+      - name: Rebuild the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || true
